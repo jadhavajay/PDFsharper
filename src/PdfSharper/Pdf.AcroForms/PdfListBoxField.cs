@@ -41,8 +41,8 @@ namespace PdfSharper.Pdf.AcroForms
         /// <summary>
         /// Initializes a new instance of PdfListBoxField.
         /// </summary>
-        internal PdfListBoxField(PdfDocument document)
-            : base(document)
+        public PdfListBoxField(PdfDocument document, bool needsAppearance = false)
+            : base(document, needsAppearance)
         { }
 
         public PdfListBoxField(PdfDictionary dict)
@@ -210,7 +210,7 @@ namespace PdfSharper.Pdf.AcroForms
         {
             // List boxes have no additional entries.
 
-            internal static DictionaryMeta Meta
+            internal static new DictionaryMeta Meta
             {
                 get { return _meta ?? (_meta = CreateMeta(typeof(Keys))); }
             }

@@ -44,14 +44,17 @@ namespace PdfSharper.Pdf.AcroForms
     /// <summary>
     /// Represents the base class for all interactive field dictionaries.
     /// </summary>
-    public abstract class PdfAcroField : PdfDictionary
+    public abstract class PdfAcroField : PdfWidgetAnnotation
     {
+        protected bool _needsAppearances = false;
         /// <summary>
         /// Initializes a new instance of PdfAcroField.
         /// </summary>
-        internal PdfAcroField(PdfDocument document)
+        internal PdfAcroField(PdfDocument document, bool needsAppearance = false)
             : base(document)
-        { }
+        {
+            _needsAppearances = needsAppearance;
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PdfAcroField"/> class. Used for type transformation.
@@ -116,7 +119,7 @@ namespace PdfSharper.Pdf.AcroForms
         /// <summary>
         /// Gets the field flags of this instance.
         /// </summary>
-        public PdfAcroFieldFlags Flags
+        public PdfAcroFieldFlags FieldFlags
         {
             // TODO: This entry is inheritable, thus the implementation is incorrect...
             get { return (PdfAcroFieldFlags)Elements.GetInteger(Keys.Ff); }
@@ -134,8 +137,14 @@ namespace PdfSharper.Pdf.AcroForms
         public XFont Font
         {
             get { return this.font; }
-            set { this.font = value; }
+            set
+            {
+                this.font = value;
+                PrepareForSaveLocal();
+                _needsAppearances = true;
+            }
         }
+
         XFont font = new XFont("Arial", 10);
 
         /// <summary>
@@ -154,7 +163,12 @@ namespace PdfSharper.Pdf.AcroForms
         public XColor ForeColor
         {
             get { return this.foreColor; }
-            set { this.foreColor = value; }
+            set
+            {
+                this.foreColor = value;
+                PrepareForSaveLocal();
+                _needsAppearances = true;
+            }
         }
         XColor foreColor = XColors.Black;
 
@@ -164,7 +178,12 @@ namespace PdfSharper.Pdf.AcroForms
         public XColor BackColor
         {
             get { return this.backColor; }
-            set { this.backColor = value; }
+            set
+            {
+                this.backColor = value;
+                PrepareForSaveLocal();
+                _needsAppearances = true;
+            }
         }
         XColor backColor = XColor.Empty;
 
@@ -174,7 +193,12 @@ namespace PdfSharper.Pdf.AcroForms
         public XColor BorderColor
         {
             get { return this.borderColor; }
-            set { this.borderColor = value; }
+            set
+            {
+                this.borderColor = value;
+                PrepareForSaveLocal();
+                _needsAppearances = true;
+            }
         }
         XColor borderColor = XColor.Empty;
 
@@ -205,24 +229,11 @@ namespace PdfSharper.Pdf.AcroForms
         }
 
         /// <summary>
-        /// Gets the Rectangle of the field
-        /// </summary>
-        public PdfRectangle Rectangle
-        {
-            get { return Elements.GetRectangle(PdfAnnotation.Keys.Rect); }
-
-            set
-            {
-                Elements.SetRectangle(PdfAnnotation.Keys.Rect, value);
-            }
-        }
-
-        /// <summary>
         /// Gets or sets a value indicating whether the field is read only.
         /// </summary>
         public bool ReadOnly
         {
-            get { return (Flags & PdfAcroFieldFlags.ReadOnly) != 0; }
+            get { return (FieldFlags & PdfAcroFieldFlags.ReadOnly) != 0; }
             set
             {
                 if (value)
@@ -251,6 +262,8 @@ namespace PdfSharper.Pdf.AcroForms
                 return Fields.GetValue(name);
             return null;
         }
+
+        protected virtual void RenderAppearance() { }
 
         /// <summary>
         /// Indicates whether the field has child fields.
@@ -518,6 +531,78 @@ namespace PdfSharper.Pdf.AcroForms
         }
 
         /// <summary>
+        /// Sets the font size by constructing a copy with the same options
+        /// and updating the default appearance stream.
+        /// </summary>
+        /// <param name="size">Em size of the font</param>
+        public void SetFontSize(double size)
+        {
+            Font = new XFont(Font.FamilyName, size, Font.Style, Font.PdfOptions, Font.StyleSimulations);
+        }
+
+        protected virtual void PrepareForSaveLocal()
+        {
+            //set or update the default appearance stream
+            string textAppearanceStream = string.Format("/{0} {1:0.##} Tf", Font.FamilyName, Font.Size);
+
+            string colorStream = string.Empty;
+
+            switch (ForeColor.ColorSpace)
+            {
+                case XColorSpace.Rgb:
+                    colorStream = string.Format("{0:0.#} {1:0.#} {2:0.#} rg", ForeColor.R / 255d, ForeColor.G / 255d, ForeColor.B / 255);
+                    break;
+                case XColorSpace.GrayScale:
+                    colorStream = string.Format("{0:0.#} g", ForeColor.GS);
+                    break;
+            }
+
+            var mk = Elements.GetDictionary(PdfWidgetAnnotation.Keys.MK);
+
+
+            if (mk == null && (BorderColor != XColor.Empty || BackColor != XColor.Empty))
+            {
+                mk = new PdfDictionary(_document);
+                Elements.SetObject(PdfWidgetAnnotation.Keys.MK, mk);
+            }
+
+            if (BorderColor != XColor.Empty)
+            {
+                var bc = BorderColor.ToArray();
+                mk.Elements.SetObject("/BC", bc);
+            }
+            else if (mk != null && mk.Elements.ContainsKey("/BC"))
+            {
+                mk.Elements.Remove("/BC");
+            }
+
+            if (BackColor != XColor.Empty)
+            {
+                var bg = BackColor.ToArray();
+                mk.Elements.SetObject("/BG", bg);
+            }
+            else if (mk != null && mk.Elements.ContainsKey("/BG"))
+            {
+                mk.Elements.Remove("/BG");
+            }
+
+            Elements.SetString(Keys.DA, textAppearanceStream + " " + colorStream);
+        }
+
+        internal override void PrepareForSave()
+        {
+            base.PrepareForSave();
+
+            PrepareForSaveLocal();
+
+            if (_needsAppearances)
+            {
+                RenderAppearance();
+                _needsAppearances = false;
+            }
+        }
+
+        /// <summary>
         /// Tries to determine the Appearance of the Field by checking elements of its dictionary
         /// </summary>
         protected internal void DetermineAppearance()
@@ -536,19 +621,23 @@ namespace PdfSharper.Pdf.AcroForms
                     {
                         var bc = mk.Elements.GetArray("/BC");
                         if (bc == null || bc.Elements.Count == 0)
-                            BorderColor = XColor.Empty;
+                            borderColor = XColor.Empty;
+                        else if (bc.Elements.Count == 1)
+                            borderColor = XColor.FromGrayScale(bc.Elements.GetReal(0));
                         else if (bc.Elements.Count == 3)
-                            BorderColor = XColor.FromArgb((int)(bc.Elements.GetReal(0) * 255.0), (int)(bc.Elements.GetReal(1) * 255.0), (int)(bc.Elements.GetReal(2) * 255.0));
+                            borderColor = XColor.FromArgb((int)(bc.Elements.GetReal(0) * 255.0), (int)(bc.Elements.GetReal(1) * 255.0), (int)(bc.Elements.GetReal(2) * 255.0));
                         else if (bc.Elements.Count == 4)
-                            BorderColor = XColor.FromCmyk(bc.Elements.GetReal(0), bc.Elements.GetReal(1), bc.Elements.GetReal(2), bc.Elements.GetReal(3));
+                            borderColor = XColor.FromCmyk(bc.Elements.GetReal(0), bc.Elements.GetReal(1), bc.Elements.GetReal(2), bc.Elements.GetReal(3));
 
                         var bg = mk.Elements.GetArray("/BG");
                         if (bg == null || bg.Elements.Count == 0)
-                            BackColor = XColor.Empty;
+                            backColor = XColor.Empty;
+                        else if (bg.Elements.Count == 1)
+                            backColor = XColor.FromGrayScale(bg.Elements.GetReal(0));
                         else if (bg.Elements.Count == 3)
-                            BackColor = XColor.FromArgb((int)(bg.Elements.GetReal(0) * 255.0), (int)(bg.Elements.GetReal(1) * 255.0), (int)(bg.Elements.GetReal(2) * 255.0));
+                            backColor = XColor.FromArgb((int)(bg.Elements.GetReal(0) * 255.0), (int)(bg.Elements.GetReal(1) * 255.0), (int)(bg.Elements.GetReal(2) * 255.0));
                         else if (bg.Elements.Count == 4)
-                            BackColor = XColor.FromCmyk(bg.Elements.GetReal(0), bg.Elements.GetReal(1), bg.Elements.GetReal(2), bg.Elements.GetReal(3));
+                            backColor = XColor.FromCmyk(bg.Elements.GetReal(0), bg.Elements.GetReal(1), bg.Elements.GetReal(2), bg.Elements.GetReal(3));
                     }
                     field = field.Parent;
                 }
@@ -572,13 +661,13 @@ namespace PdfSharper.Pdf.AcroForms
                                 break;
                             case OpCodeName.g:
                                 double greyValue = Double.Parse(op.Operands[0].ToString());
-                                ForeColor = XColor.FromGrayScale(greyValue);
+                                foreColor = XColor.FromGrayScale(greyValue);
                                 break;
                             case OpCodeName.rg:
                                 int redValue = (int)(Double.Parse(op.Operands[0].ToString()) * 255d);
                                 int greenValue = (int)(Double.Parse(op.Operands[1].ToString()) * 255d);
                                 int blueValue = (int)(Double.Parse(op.Operands[2].ToString()) * 255d);
-                                ForeColor = XColor.FromArgb(redValue, greenValue, blueValue);
+                                foreColor = XColor.FromArgb(redValue, greenValue, blueValue);
                                 break;
                         }
                     }
@@ -606,10 +695,7 @@ namespace PdfSharper.Pdf.AcroForms
                     font = new XFont(BaseContentFontName, fontSize);
                 }
             }
-            catch
-            {
-                font = new XFont("Arial", 10);
-            }
+            catch { }
         }
 
         internal virtual void Flatten()
@@ -827,7 +913,7 @@ namespace PdfSharper.Pdf.AcroForms
                     {
                         // Do type transformation
                         field = CreateAcroField(dict);
-                        //Elements[index] = field.XRef;
+                        Elements[index] = field.Reference;
                     }
                     return field;
                 }
@@ -920,7 +1006,7 @@ namespace PdfSharper.Pdf.AcroForms
         /// Predefined keys of this dictionary. 
         /// The description comes from PDF 1.4 Reference.
         /// </summary>
-        public class Keys : KeysBase
+        public new class Keys : PdfWidgetAnnotation.Keys
         {
             // ReSharper disable InconsistentNaming
 
@@ -959,7 +1045,7 @@ namespace PdfSharper.Pdf.AcroForms
             /// (Optional) The partial field name.
             /// </summary>
             [KeyInfo(KeyType.TextString | KeyType.Optional)]
-            public const string T = "/T";
+            public new const string T = "/T";
 
             /// <summary>
             /// (Optional; PDF 1.3) An alternate field name, to be used in place of the actual
@@ -1048,19 +1134,7 @@ namespace PdfSharper.Pdf.AcroForms
             /// must be Sig for a signature dictionary.
             /// </summary>
             [KeyInfo(KeyType.Name | KeyType.Optional)]
-            public const string Type = "/Type";
-
-            /// <summary>
-            /// 
-            /// </summary>
-            [KeyInfo(KeyType.Name | KeyType.Required)]
-            public const string Subtype = "/Subtype";
-
-            /// <summary>
-            /// 
-            /// </summary>
-            [KeyInfo(KeyType.Rectangle | KeyType.Required)]
-            public const string Rect = "/Rect";
+            public new const string Type = "/Type";
         }
 
         /// <summary>

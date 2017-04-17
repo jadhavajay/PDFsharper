@@ -44,8 +44,8 @@ namespace PdfSharper.Pdf.AcroForms
         /// <summary>
         /// Initializes a new instance of PdfTextField.
         /// </summary>
-        public PdfTextField(PdfDocument document)
-            : base(document)
+        public PdfTextField(PdfDocument document, bool needsAppearance = false)
+            : base(document, needsAppearance)
         {
             Elements.SetName(Keys.FT, PdfAcroFieldTypes.Text);
             Elements.SetString(Keys.TU, string.Empty);
@@ -69,7 +69,11 @@ namespace PdfSharper.Pdf.AcroForms
         public string Text
         {
             get { return Elements.GetString(Keys.V); }
-            set { Elements.SetString(Keys.V, value); RenderAppearance(); } //HACK in PdfTextField
+            set
+            {
+                Elements.SetString(Keys.V, value);
+                _needsAppearances = true;
+            }
         }
 
 
@@ -178,7 +182,7 @@ namespace PdfSharper.Pdf.AcroForms
         /// </summary>
         public bool MultiLine
         {
-            get { return (Flags & PdfAcroFieldFlags.Multiline) != 0; }
+            get { return (FieldFlags & PdfAcroFieldFlags.Multiline) != 0; }
             set
             {
                 if (value)
@@ -193,7 +197,7 @@ namespace PdfSharper.Pdf.AcroForms
         /// </summary>
         public bool Password
         {
-            get { return (Flags & PdfAcroFieldFlags.Password) != 0; }
+            get { return (FieldFlags & PdfAcroFieldFlags.Password) != 0; }
             set
             {
                 if (value)
@@ -209,7 +213,7 @@ namespace PdfSharper.Pdf.AcroForms
         /// </summary>
         public bool Combined
         {
-            get { return (Flags & PdfAcroFieldFlags.Comb) != 0; }
+            get { return (FieldFlags & PdfAcroFieldFlags.Comb) != 0; }
             set
             {
                 if (value)
@@ -220,26 +224,11 @@ namespace PdfSharper.Pdf.AcroForms
         }
 
         /// <summary>
-        /// Sets the font size by constructing a copy with the same options
-        /// and updating the default appearance stream.
-        /// </summary>
-        /// <param name="size">Em size of the font</param>
-        public void SetFontSize(double size)
-        {
-            Font = new XFont(Font.FamilyName, size, Font.Style, Font.PdfOptions, Font.StyleSimulations);
-        }
-
-        /// <summary>
         /// Creates the normal appearance form X object for the annotation that represents
         /// this acro form text field.
         /// </summary>
-        void RenderAppearance()
+        protected override void RenderAppearance()
         {
-            if (string.IsNullOrEmpty(Text))
-            {
-                Elements.Remove(PdfAnnotation.Keys.AP);
-                return;
-            }
 #if true_
             PdfFormXObject xobj = new PdfFormXObject(Owner);
             Owner.Internals.AddObject(xobj);
@@ -360,7 +349,7 @@ namespace PdfSharper.Pdf.AcroForms
                 xrect.Width = xrect.Width + RightMargin;
                 xrect.Height = xrect.Height + BottomMargin;
 
-                if ((Flags & PdfAcroFieldFlags.Comb) != 0 && MaxLength > 0)
+                if ((FieldFlags & PdfAcroFieldFlags.Comb) != 0 && MaxLength > 0)
                 {
                     var combWidth = xrect.Width / MaxLength;
                     var format = XStringFormats.TopLeft;
@@ -431,29 +420,6 @@ namespace PdfSharper.Pdf.AcroForms
 #endif
         }
 
-        internal override void PrepareForSave()
-        {
-            base.PrepareForSave();
-
-            //set or update the default appearance stream
-            string textAppearanceStream = string.Format("/{0} {1:0.##} Tf", Font.FamilyName, Font.Size);
-
-            string colorStream = string.Empty;
-
-            switch (ForeColor.ColorSpace)
-            {
-                case XColorSpace.Rgb:
-                    colorStream = string.Format("{0:0.#} {1:0.#} {2:0.#} rg", ForeColor.R / 255d, ForeColor.G / 255d, ForeColor.B / 255);
-                    break;
-                case XColorSpace.GrayScale:
-                    colorStream = string.Format("{0:0.#} g", ForeColor.GS);
-                    break;
-            }
-
-            Elements.SetString(Keys.DA, textAppearanceStream + " " + colorStream);
-
-            RenderAppearance();
-        }
 
         internal override void Flatten()
         {
@@ -490,7 +456,7 @@ namespace PdfSharper.Pdf.AcroForms
                     if (text.Length > 0)
                     {
                         var xRect = new XRect(rect.X1, elementPage.Height.Point - rect.Y2, rect.Width, rect.Height);
-                        if ((Flags & PdfAcroFieldFlags.Comb) != 0 && MaxLength > 0)
+                        if ((FieldFlags & PdfAcroFieldFlags.Comb) != 0 && MaxLength > 0)
                         {
                             var combWidth = xRect.Width / MaxLength;
                             format.Comb = true;
@@ -584,7 +550,7 @@ namespace PdfSharper.Pdf.AcroForms
             /// <summary>
             /// Gets the KeysMeta for these keys.
             /// </summary>
-            internal static DictionaryMeta Meta
+            internal static new DictionaryMeta Meta
             {
                 get { return _meta ?? (_meta = CreateMeta(typeof(Keys))); }
             }

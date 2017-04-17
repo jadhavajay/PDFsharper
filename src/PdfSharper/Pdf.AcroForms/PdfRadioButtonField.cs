@@ -42,8 +42,8 @@ namespace PdfSharper.Pdf.AcroForms
         /// <summary>
         /// Initializes a new instance of PdfRadioButtonField.
         /// </summary>
-        internal PdfRadioButtonField(PdfDocument document)
-            : base(document)
+        public PdfRadioButtonField(PdfDocument document, bool needsAppearance = false)
+            : base(document, needsAppearance)
         {
             _document = document;
         }
@@ -160,7 +160,7 @@ namespace PdfSharper.Pdf.AcroForms
             /// <summary>
             /// Gets the KeysMeta for these keys.
             /// </summary>
-            internal static DictionaryMeta Meta
+            internal static new DictionaryMeta Meta
             {
                 get { return _meta ?? (_meta = CreateMeta(typeof(Keys))); }
             }

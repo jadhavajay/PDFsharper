@@ -40,8 +40,8 @@ namespace PdfSharper.Pdf.AcroForms
         /// <summary>
         /// Initializes a new instance of PdfGenericField.
         /// </summary>
-        public PdfGenericField(PdfDocument document)
-            : base(document)
+        public PdfGenericField(PdfDocument document, bool needsAppearance = false)
+            : base(document, needsAppearance)
         { }
 
         public PdfGenericField(PdfDictionary dict)
@@ -65,7 +65,7 @@ namespace PdfSharper.Pdf.AcroForms
         /// </summary>
         public new class Keys : PdfAcroField.Keys
         {
-            internal static DictionaryMeta Meta
+            internal static new DictionaryMeta Meta
             {
                 get { return _meta ?? (_meta = CreateMeta(typeof(Keys))); }
             }
